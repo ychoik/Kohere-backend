@@ -79,6 +79,21 @@ class AuthOnboardingDocsTest {
   private static final String INVALID_SOCIAL_TOKEN = "invalid-social-token";
   private static final String MALFORMED_BODY = "{ \"oops\" }";
 
+  // 서명이 깨진(다른 키로 서명) 액세스 토큰. 서버 검증에서 401 UNAUTHENTICATED 를 유발하면서도 구조상 JWT 라,
+  // restdocs-api-spec 이 "무인증" 예시에서도 bearerAuthJWT 보안 스킴을 도출하게 한다. 무인증 예시는 본래 헤더를
+  // 안 보내는데, 그 예시가 오퍼레이션 "대표"로 뽑히면(스니펫 병합 순서는 비결정적) security 가 통째로 누락된다 →
+  // Swagger 자물쇠 사라지고 토큰 미전송 → 401. 모든 예시가 Bearer JWT 헤더를 갖게 해 순서와 무관하게 막는다.
+  private static final String FORGED_TOKEN =
+      Jwts.builder()
+          .issuer("kohere")
+          .subject("1")
+          .claim("onboardingCompleted", true)
+          .signWith(
+              Keys.hmacShaKeyFor(
+                  "forged-doc-only-wrong-secret-please-override-32bytes-min!!"
+                      .getBytes(StandardCharsets.UTF_8)))
+          .compact();
+
   @TestConfiguration
   static class FakeOidcConfig {
     @Bean
@@ -367,6 +382,7 @@ class AuthOnboardingDocsTest {
 
     perform(
         post("/api/v1/auth/terms")
+            .header(HttpHeaders.AUTHORIZATION, bearer(FORGED_TOKEN))
             .contentType(MediaType.APPLICATION_JSON)
             .content(termsJson(true, true, false)),
         status().isUnauthorized(),
@@ -417,6 +433,7 @@ class AuthOnboardingDocsTest {
 
     perform(
         post("/api/v1/auth/email/verification-code")
+            .header(HttpHeaders.AUTHORIZATION, bearer(FORGED_TOKEN))
             .contentType(MediaType.APPLICATION_JSON)
             .content("{\"email\":\"" + emailFor("err-pending") + "\"}"),
         status().isUnauthorized(),
@@ -434,8 +451,20 @@ class AuthOnboardingDocsTest {
         "auth-email-verification-code-token-expired",
         "이메일 인증번호 발송 — 액세스 토큰 만료 (401 TOKEN_EXPIRED)");
 
+    // 약관 미동의(PENDING) 상태로 인증번호 발송 → 약관 동의 선행 안내 422 (이메일 인증은 약관 동의가 선행)
+    perform(
+        post("/api/v1/auth/email/verification-code")
+            .header(HttpHeaders.AUTHORIZATION, bearer(pendingToken))
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("{\"email\":\"" + emailFor("err-pending") + "\"}"),
+        status().isUnprocessableEntity(),
+        "AUTH_TERMS_AGREEMENT_REQUIRED",
+        "auth-email-verification-code-terms-required",
+        "이메일 인증번호 발송 — 약관 미동의(PENDING) 상태 (422 AUTH_TERMS_AGREEMENT_REQUIRED)");
+
     // 재발송 간격 미달 → 429 (첫 발송 성공 직후 즉시 재요청)
     String resendToken = read(socialLogin("err-resend"), "data", "accessToken");
+    agreeTerms(resendToken);
     mockMvc
         .perform(
             post("/api/v1/auth/email/verification-code")
@@ -455,6 +484,7 @@ class AuthOnboardingDocsTest {
 
     // 메일 발송 실패(provider 장애·타임아웃) → 502, 챌린지 미저장
     String smtpToken = read(socialLogin("err-smtp"), "data", "accessToken");
+    agreeTerms(smtpToken);
     String smtpEmail = emailFor("err-smtp");
     doThrow(new EmailDispatchException(new RuntimeException("smtp down")))
         .when(emailSender)
@@ -512,6 +542,7 @@ class AuthOnboardingDocsTest {
 
     perform(
         post("/api/v1/auth/email/verify")
+            .header(HttpHeaders.AUTHORIZATION, bearer(FORGED_TOKEN))
             .contentType(MediaType.APPLICATION_JSON)
             .content("{\"email\":\"" + emailFor("err-pending") + "\",\"code\":\"000000\"}"),
         status().isUnauthorized(),
@@ -531,6 +562,7 @@ class AuthOnboardingDocsTest {
 
     // 코드 불일치 누적 → 시도 상한 초과 429 (오입력 maxAttempts회째에 거절)
     String attemptsToken = read(socialLogin("err-attempts"), "data", "accessToken");
+    agreeTerms(attemptsToken);
     String attemptsEmail = emailFor("err-attempts");
     mockMvc
         .perform(
@@ -581,6 +613,7 @@ class AuthOnboardingDocsTest {
 
     perform(
         post("/api/v1/auth/onboarding")
+            .header(HttpHeaders.AUTHORIZATION, bearer(FORGED_TOKEN))
             .contentType(MediaType.APPLICATION_JSON)
             .content(onboardingJson(emailFor("err-pending"))),
         status().isUnauthorized(),
@@ -598,29 +631,29 @@ class AuthOnboardingDocsTest {
         "auth-onboarding-token-expired",
         "온보딩 — 액세스 토큰 만료 (401 TOKEN_EXPIRED)");
 
-    // 약관 미동의(PENDING) + 이메일 미인증 상태 → 이메일 검증이 먼저 422
+    // 약관 미동의(PENDING) 상태로 온보딩 제출 → 약관 동의 선행 안내 422 (이메일 인증 안내보다 약관 동의가 먼저)
     perform(
         post("/api/v1/auth/onboarding")
             .header(HttpHeaders.AUTHORIZATION, bearer(pendingToken))
             .contentType(MediaType.APPLICATION_JSON)
             .content(onboardingJson(emailFor("err-pending"))),
         status().isUnprocessableEntity(),
-        "AUTH_EMAIL_NOT_VERIFIED",
-        "auth-onboarding-email-not-verified",
-        "온보딩 — 이메일 미인증 (422 AUTH_EMAIL_NOT_VERIFIED)");
-
-    // 이메일은 인증했으나 약관 미동의(PENDING) → 약관 동의 선행 필요 422
-    String termsRequiredToken = read(socialLogin("err-terms"), "data", "accessToken");
-    sendAndVerifyEmail(termsRequiredToken, emailFor("err-terms"));
-    perform(
-        post("/api/v1/auth/onboarding")
-            .header(HttpHeaders.AUTHORIZATION, bearer(termsRequiredToken))
-            .contentType(MediaType.APPLICATION_JSON)
-            .content(onboardingJson(emailFor("err-terms"))),
-        status().isUnprocessableEntity(),
         "AUTH_TERMS_AGREEMENT_REQUIRED",
         "auth-onboarding-terms-required",
         "온보딩 — 약관 미동의 상태 (422 AUTH_TERMS_AGREEMENT_REQUIRED)");
+
+    // 약관은 동의했으나(TERMS_AGREED) 이메일 미인증 → 이메일 인증 선행 필요 422
+    String emailNeedToken = read(socialLogin("err-emailneed"), "data", "accessToken");
+    agreeTerms(emailNeedToken);
+    perform(
+        post("/api/v1/auth/onboarding")
+            .header(HttpHeaders.AUTHORIZATION, bearer(emailNeedToken))
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(onboardingJson(emailFor("err-emailneed"))),
+        status().isUnprocessableEntity(),
+        "AUTH_EMAIL_NOT_VERIFIED",
+        "auth-onboarding-email-not-verified",
+        "온보딩 — 약관 동의 후 이메일 미인증 (422 AUTH_EMAIL_NOT_VERIFIED)");
 
     // 이미 온보딩 완료한 사용자(약관·이메일 모두 통과) 재요청 → 409
     perform(
@@ -664,6 +697,7 @@ class AuthOnboardingDocsTest {
     // ===== logout =====
     perform(
         post("/api/v1/auth/logout")
+            .header(HttpHeaders.AUTHORIZATION, bearer(FORGED_TOKEN))
             .contentType(MediaType.APPLICATION_JSON)
             .content("{\"refreshToken\":\"rt_any\"}"),
         status().isUnauthorized(),
@@ -713,7 +747,7 @@ class AuthOnboardingDocsTest {
 
     // ===== GET /users/me =====
     perform(
-        get("/api/v1/users/me"),
+        get("/api/v1/users/me").header(HttpHeaders.AUTHORIZATION, bearer(FORGED_TOKEN)),
         status().isUnauthorized(),
         "UNAUTHENTICATED",
         "user-get-me-unauthenticated",
@@ -756,6 +790,7 @@ class AuthOnboardingDocsTest {
 
     perform(
         patch("/api/v1/users/me")
+            .header(HttpHeaders.AUTHORIZATION, bearer(FORGED_TOKEN))
             .contentType(MediaType.APPLICATION_JSON)
             .content("{\"marketingAgreed\":true}"),
         status().isUnauthorized(),
@@ -795,7 +830,7 @@ class AuthOnboardingDocsTest {
 
     // ===== DELETE /users/me =====
     perform(
-        delete("/api/v1/users/me"),
+        delete("/api/v1/users/me").header(HttpHeaders.AUTHORIZATION, bearer(FORGED_TOKEN)),
         status().isUnauthorized(),
         "UNAUTHENTICATED",
         "user-withdraw-unauthenticated",
