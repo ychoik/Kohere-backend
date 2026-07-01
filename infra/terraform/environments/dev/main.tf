@@ -89,6 +89,13 @@ module "secrets" {
   mysql_password      = var.mysql_password
   mysql_root_password = var.mysql_root_password
   mongo_password      = var.mongo_password
+  solapi_api_key      = var.solapi_api_key
+  solapi_api_secret   = var.solapi_api_secret
+  bizno_api_key       = var.bizno_api_key
+  # 비밀 아닌 앱 설정(enabled·from) — SSM String으로 저장해 refresh-env가 .env로 회수(재배포만으로 반영, ADR-0024)
+  solapi_enabled = var.solapi_enabled
+  solapi_from    = var.solapi_from
+  bizno_enabled  = var.bizno_enabled
 }
 
 # ===== 데이터 EBS (mysql/mongo 영속) =====
@@ -125,7 +132,7 @@ module "host" {
   images_bucket         = module.s3_cloudfront.bucket_name
   images_cdn_domain     = module.s3_cloudfront.cdn_domain
 
-  # 시크릿 파라미터가 먼저 존재해야 부팅 시 refresh-env가 .env로 주입할 수 있다.
+  # 시크릿·설정 파라미터가 먼저 존재해야 부팅 시 refresh-env가 .env로 주입할 수 있다.
   depends_on = [module.secrets]
 }
 
