@@ -564,6 +564,7 @@ class AuthServiceTest {
     verify(userAccountService).completeLandlordOnboarding(eq(40L), captor.capture());
     assertThat(captor.getValue().name()).isEqualTo("Kim Imdae");
     assertThat(captor.getValue().phoneNumber()).isEqualTo("01012345678");
+    assertThat(captor.getValue().birthDate()).isEqualTo(LocalDate.of(1990, 1, 1));
     verify(refreshTokenRepository).save(any(RefreshToken.class));
   }
 
@@ -632,7 +633,7 @@ class AuthServiceTest {
         "https://flagcdn.com/kr.svg",
         "UNDERGRADUATE_STUDENT",
         "gil@example.com",
-        "SHORT_TERM_VISIT_C-2_C-3",
+        "SHORT_TERM_VISIT",
         null,
         "TENANT",
         "ACTIVE",
@@ -649,7 +650,7 @@ class AuthServiceTest {
         "KR",
         "UNDERGRADUATE_STUDENT",
         "gil@example.com",
-        "SHORT_TERM_VISIT_C-2_C-3");
+        "SHORT_TERM_VISIT");
   }
 
   /**
@@ -664,7 +665,7 @@ class AuthServiceTest {
         "Kim Imdae",
         "CalmFox",
         null,
-        null,
+        LocalDate.of(1990, 1, 1),
         null,
         null,
         null,
@@ -679,6 +680,6 @@ class AuthServiceTest {
   }
 
   private static LandlordOnboardingRequest landlordOnboardingRequest() {
-    return new LandlordOnboardingRequest("Kim Imdae", "01012345678");
+    return new LandlordOnboardingRequest("Kim Imdae", "01012345678", LocalDate.of(1990, 1, 1));
   }
 }

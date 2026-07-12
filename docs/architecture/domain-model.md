@@ -149,7 +149,7 @@
 
 > [API 스펙](../api/specs/01-auth-onboarding.md)(`/api/v1/users/me`) · [시퀀스](sequence-diagrams/01-auth-onboarding/README.md) · `allowedDependencies = {common}`
 
-회원 프로필과 계정 생애주기(가입·약관 동의·온보딩·수정·탈퇴)를 소유한다. 사용자는 소셜 검증만 끝난 `PENDING` → 약관 동의 완료 `TERMS_AGREED` → 온보딩 완료 `ACTIVE` → 탈퇴 `WITHDRAWN`의 단방향 상태 모델을 가진다(약관 동의와 온보딩은 분리된 단계로 각각 상태를 전이한다). 회원은 역할(`userType`)에 따라 **세입자(`TENANT`, 외국인 거주 탐색자)** 와 **임대인(`LANDLORD`, 매물 등록자)** 으로 나뉘며 한 `User` 애그리거트로 통합 관리한다(별도 모듈 아님). 소셜 로그인·약관 동의까지는 공통이고 이후 본인 확인·온보딩에서 분기한다 — 세입자는 `firstName`/`lastName`·`gender`·`birthDate`·`country`·`occupation`·`email`(인증 완료)·`visaType`를 수집하고, **임대인은 성·이름을 합친 단일 `name`·`phoneNumber`(SMS 인증 완료) 두 필드만으로 온보딩을 완료**하며(약관 동의 + 연락처 인증만 — 사업자번호는 온보딩에서 수집하지 않음) **`gender`·`birthDate`·`country`·`occupation`·`visaType`·`email`을 미수집**한다(인증 연락 수단이 세입자는 `email`, 임대인은 `phoneNumber`로 갈린다 — [ADR-0034](../adr/0034-landlord-phone-sms-verification.md)). 임대인 사업자등록번호는 온보딩과 분리돼 추후 매물 등록 시점에 채워지며(온보딩 완료 시 `null`), 검증은 별도 무상태 API로 다룬다(§1 `BusinessVerification`). `userType`은 온보딩 제출 시 확정되고 이후 불변이다.
+회원 프로필과 계정 생애주기(가입·약관 동의·온보딩·수정·탈퇴)를 소유한다. 사용자는 소셜 검증만 끝난 `PENDING` → 약관 동의 완료 `TERMS_AGREED` → 온보딩 완료 `ACTIVE` → 탈퇴 `WITHDRAWN`의 단방향 상태 모델을 가진다(약관 동의와 온보딩은 분리된 단계로 각각 상태를 전이한다). 회원은 역할(`userType`)에 따라 **세입자(`TENANT`, 외국인 거주 탐색자)** 와 **임대인(`LANDLORD`, 매물 등록자)** 으로 나뉘며 한 `User` 애그리거트로 통합 관리한다(별도 모듈 아님). 소셜 로그인·약관 동의까지는 공통이고 이후 본인 확인·온보딩에서 분기한다 — 세입자는 `firstName`/`lastName`·`gender`·`birthDate`·`country`·`occupation`·`email`(인증 완료)·`visaType`를 수집하고, **임대인은 성·이름을 합친 단일 `name`·`phoneNumber`(SMS 인증 완료)·`birthDate` 세 필드로 온보딩을 완료**하며(약관 동의 + 연락처 인증만 — 사업자번호는 온보딩에서 수집하지 않음) **`gender`·`country`·`occupation`·`visaType`·`email`을 미수집**한다(생년월일은 세입자와 동일하게 수집)(인증 연락 수단이 세입자는 `email`, 임대인은 `phoneNumber`로 갈린다 — [ADR-0034](../adr/0034-landlord-phone-sms-verification.md)). 임대인 사업자등록번호는 온보딩과 분리돼 추후 매물 등록 시점에 채워지며(온보딩 완료 시 `null`), 검증은 별도 무상태 API로 다룬다(§1 `BusinessVerification`). `userType`은 온보딩 제출 시 확정되고 이후 불변이다.
 
 **`User`** — 회원의 프로필·동의·계정 생애주기를 일관성 경계로 묶는 애그리거트 루트. 식별자 `id`(소셜 자격→회원 매핑·세션 토큰·이메일 인증은 `auth` 소관). [값 객체: `FullName`, `Consent`]
 
@@ -164,7 +164,7 @@
 | `businessRegistrationNumber` | String, nullable | 임대인 사업자등록번호(세입자 미수집). **온보딩에서는 수집하지 않아 온보딩 완료 시 `null`** — 추후 매물 등록(별도 도메인·미구현) 시점에 채운다(현재 이 컬럼을 채우는 코드 경로 없음). 원문 비저장, 해시로만 영속(컬럼 `business_registration_number_hash`)하고 응답·로그 마스킹(예 `****567890`)(확인 필요) |
 | `nickname` | String | 시스템이 배정하는 표시용 닉네임(`형용사 + 사물`). 전역 유니크, 사용자 입력 아님 — 온보딩 완료 시 자동 배정(세입자·임대인 공통). 메인 화면 비노출(프로필·`더보기 탭`에서 확인) |
 | `gender` | enum `Gender` | 성별. 세입자 온보딩 필수(임대인 미수집) |
-| `birthDate` | LocalDate | 생년월일(과거 날짜만). 세입자 온보딩 필수(임대인 미수집) |
+| `birthDate` | LocalDate | 생년월일(과거 날짜만). 세입자·임대인 온보딩 필수 |
 | `country` | String | 국적(ISO 3166-1 alpha-2 코드, 예 `VN`). 세입자 온보딩 필수(임대인 미수집) — 클라이언트는 국가만 전송, 표시명·국기(이미지 URL)·표시 언어(`lang`)는 `countries` 참조로 확보 |
 | `occupation` | enum `Occupation` | 직업 유형. 세입자 온보딩 필수(임대인 미수집) |
 | `email` | String | 인증 완료된 연락 이메일(세입자 온보딩 중 인증번호로 검증) — 민감정보. **세입자 전용**(임대인 미수집·NULL — [ADR-0034](../adr/0034-landlord-phone-sms-verification.md)). 소셜 제공자 이메일(`auth.SocialAccount.email`)과 별개 |
@@ -175,7 +175,7 @@
 | `updatedAt` | Instant | 최종 수정 시각(UTC) |
 | `withdrawnAt` | Instant(UTC), nullable | 탈퇴 시각(탈퇴 시 기록) |
 
-**불변식:** 상태 전이는 `PENDING → TERMS_AGREED → ACTIVE → WITHDRAWN`만 허용(역전이·건너뛰기 금지); **약관 동의** 상태 전이는 `PENDING`에서만 일어나며(→`TERMS_AGREED`) 이때 `consent`(이용약관·개인정보처리방침·마케팅 동의 + `agreedAt` + `termsVersion`)를 확정 — 이용약관·개인정보처리방침 동의가 모두 필요(미동의 `422 AUTH_REQUIRED_AGREEMENT_MISSING`)하고 마케팅 동의는 선택(기본 미동의); 이미 `TERMS_AGREED`면 약관 재호출은 상태·동의를 바꾸지 않는 멱등 성공(`200`, 의도적 재동의 아님 — 마케팅 동의 변경은 프로필 수정으로), 이미 `ACTIVE`면 `409 AUTH_ONBOARDING_ALREADY_COMPLETED`; **온보딩 제출**은 `TERMS_AGREED`에서만 가능하며(약관 미동의 `PENDING` 상태에서 시도하면 `422 AUTH_TERMS_AGREEMENT_REQUIRED`) **역할별로 분기**한다 — 세입자는 `POST /auth/onboarding`으로 `name`(`firstName`/`lastName`)·`gender`·`birthDate`·`country`·`occupation`·`email`·`visaType`를, 임대인은 `POST /auth/landlord/onboarding`으로 **단일 `name`·`phoneNumber` 두 필드만**을 제출하고(임대인은 `email`·`businessRegistrationNumber` 미수집), 성공 시 `ACTIVE`로 전이하면서 해당 필드를 한 번에 확정하고 `userType`(세입자 `TENANT` / 임대인 `LANDLORD`)을 확정(이후 불변)하며 `nickname`을 자동 배정한다(이미 `ACTIVE` 재요청은 `409 AUTH_ONBOARDING_ALREADY_COMPLETED`); 온보딩 완료 게이트는 **역할별로 분기**한다 — **세입자**는 제출 `email`이 `auth`에서 인증 완료(`VERIFIED`)된 이메일과 일치해야 하고(미인증·불일치 `422 AUTH_EMAIL_NOT_VERIFIED`; 우선순위 약관 동의 → 이메일 인증), **임대인**은 제출 `phoneNumber`가 `auth` SMS 인증(`VERIFIED`)된 번호와 일치해야 한다(미인증·불일치 `422 AUTH_PHONE_NOT_VERIFIED`; 우선순위 약관 동의 → 연락처 인증 — **사업자번호 게이트 없음**); `nickname`은 `NicknameGenerator`(도메인 서비스)가 형용사 풀·사물 풀의 active 단어에서 골라 `형용사 + 사물`로 무작위 배정하되 전역 유니크가 보장될 때까지 재조합 재시도(상한 초과 시 fallback; 사용자 입력·수정 대상 아님); 필수 약관 동의는 프로필 수정으로 철회 불가(탈퇴 경로로만); 프로필 부분 수정은 `ACTIVE`에서만, 전송 필드만 변경(미전송 ≠ 비움) — **역할별로 수정 가능 필드가 갈린다**: 세입자는 `firstName`/`lastName`·`gender`·`birthDate`(과거만)·`country`·`occupation`·`visaType`·`marketingAgreed`를, 임대인은 `name`(=`firstName`)·`phoneNumber`·`marketingAgreed`를 수정 가능하다(세입자 `email`은 재인증이 필요해 이 경로로 수정 불가 — 임대인은 `email` 미보유; `nickname`·`userType`은 공통 불변; 임대인 `businessRegistrationNumber`는 온보딩에서 수집하지 않으므로 이 프로필 수정 경로 대상이 아니다 — 추후 매물 등록에서 다룬다; `phoneNumber`는 변경 시 **SMS 재인증(`PhoneVerification` VERIFIED) 필요** — 새 번호 재인증 후에만 반영(미인증·불일치 `422 AUTH_PHONE_NOT_VERIFIED`), [API 스펙](../api/specs/01-auth-onboarding.md) §9); 탈퇴는 `PENDING`/`TERMS_AGREED`/`ACTIVE`에서 `WITHDRAWN`으로(이미 `WITHDRAWN` 재요청 `409 USER_ALREADY_WITHDRAWN`); `WITHDRAWN`·부재 사용자 조회·수정은 `404 USER_NOT_FOUND`; 모든 변경은 `updatedAt`을 갱신; 탈퇴(`WITHDRAWN`) 시 `withdrawnAt`을 기록하고 식별 PII(이름·생년월일·국적·직업·이메일·비자·닉네임)를 즉시 익명화한다([ADR-0014](../adr/0014-withdrawal-pii-anonymization.md)) — 임대인 PII(`name`·`phoneNumber`, 및 추후 매물 등록에서 채워질 경우 `businessRegistrationNumber`(해시)) 익명화 범위는 확인 필요; `email`·`visaType`(및 임대인 `phoneNumber`, 값이 있으면 `businessRegistrationNumber`)은 민감정보로 로그·타 사용자 노출 시 마스킹(본인 `GET /users/me`는 평문 노출 — 단 임대인 프로필 응답 형태는 추후 확인 필요).
+**불변식:** 상태 전이는 `PENDING → TERMS_AGREED → ACTIVE → WITHDRAWN`만 허용(역전이·건너뛰기 금지); **약관 동의** 상태 전이는 `PENDING`에서만 일어나며(→`TERMS_AGREED`) 이때 `consent`(이용약관·개인정보처리방침·마케팅 동의 + `agreedAt` + `termsVersion`)를 확정 — 이용약관·개인정보처리방침 동의가 모두 필요(미동의 `422 AUTH_REQUIRED_AGREEMENT_MISSING`)하고 마케팅 동의는 선택(기본 미동의); 이미 `TERMS_AGREED`면 약관 재호출은 상태·동의를 바꾸지 않는 멱등 성공(`200`, 의도적 재동의 아님 — 마케팅 동의 변경은 프로필 수정으로), 이미 `ACTIVE`면 `409 AUTH_ONBOARDING_ALREADY_COMPLETED`; **온보딩 제출**은 `TERMS_AGREED`에서만 가능하며(약관 미동의 `PENDING` 상태에서 시도하면 `422 AUTH_TERMS_AGREEMENT_REQUIRED`) **역할별로 분기**한다 — 세입자는 `POST /auth/onboarding`으로 `name`(`firstName`/`lastName`)·`gender`·`birthDate`·`country`·`occupation`·`email`·`visaType`를, 임대인은 `POST /auth/landlord/onboarding`으로 **단일 `name`·`phoneNumber`·`birthDate` 세 필드**를 제출하고(임대인은 `email`·`businessRegistrationNumber` 미수집; 생년월일은 세입자와 동일하게 수집), 성공 시 `ACTIVE`로 전이하면서 해당 필드를 한 번에 확정하고 `userType`(세입자 `TENANT` / 임대인 `LANDLORD`)을 확정(이후 불변)하며 `nickname`을 자동 배정한다(이미 `ACTIVE` 재요청은 `409 AUTH_ONBOARDING_ALREADY_COMPLETED`); 온보딩 완료 게이트는 **역할별로 분기**한다 — **세입자**는 제출 `email`이 `auth`에서 인증 완료(`VERIFIED`)된 이메일과 일치해야 하고(미인증·불일치 `422 AUTH_EMAIL_NOT_VERIFIED`; 우선순위 약관 동의 → 이메일 인증), **임대인**은 제출 `phoneNumber`가 `auth` SMS 인증(`VERIFIED`)된 번호와 일치해야 한다(미인증·불일치 `422 AUTH_PHONE_NOT_VERIFIED`; 우선순위 약관 동의 → 연락처 인증 — **사업자번호 게이트 없음**); `nickname`은 `NicknameGenerator`(도메인 서비스)가 형용사 풀·사물 풀의 active 단어에서 골라 `형용사 + 사물`로 무작위 배정하되 전역 유니크가 보장될 때까지 재조합 재시도(상한 초과 시 fallback; 사용자 입력·수정 대상 아님); 필수 약관 동의는 프로필 수정으로 철회 불가(탈퇴 경로로만); 프로필 부분 수정은 `ACTIVE`에서만, 전송 필드만 변경(미전송 ≠ 비움) — **역할별로 수정 가능 필드가 갈린다**: 세입자는 `firstName`/`lastName`·`gender`·`birthDate`(과거만)·`country`·`occupation`·`visaType`·`marketingAgreed`를, 임대인은 `name`(=`firstName`)·`phoneNumber`·`marketingAgreed`를 수정 가능하다(세입자 `email`은 재인증이 필요해 이 경로로 수정 불가 — 임대인은 `email` 미보유; `nickname`·`userType`은 공통 불변; 임대인 `businessRegistrationNumber`는 온보딩에서 수집하지 않으므로 이 프로필 수정 경로 대상이 아니다 — 추후 매물 등록에서 다룬다; `phoneNumber`는 변경 시 **SMS 재인증(`PhoneVerification` VERIFIED) 필요** — 새 번호 재인증 후에만 반영(미인증·불일치 `422 AUTH_PHONE_NOT_VERIFIED`), [API 스펙](../api/specs/01-auth-onboarding.md) §9); 탈퇴는 `PENDING`/`TERMS_AGREED`/`ACTIVE`에서 `WITHDRAWN`으로(이미 `WITHDRAWN` 재요청 `409 USER_ALREADY_WITHDRAWN`); `WITHDRAWN`·부재 사용자 조회·수정은 `404 USER_NOT_FOUND`; 모든 변경은 `updatedAt`을 갱신; 탈퇴(`WITHDRAWN`) 시 `withdrawnAt`을 기록하고 식별 PII(이름·생년월일·국적·직업·이메일·비자·닉네임)를 즉시 익명화한다([ADR-0014](../adr/0014-withdrawal-pii-anonymization.md)) — 임대인 PII(`name`·`phoneNumber`·`birthDate`, 및 추후 매물 등록에서 채워질 경우 `businessRegistrationNumber`(해시)) 익명화 범위는 확인 필요; `email`·`visaType`(및 임대인 `phoneNumber`, 값이 있으면 `businessRegistrationNumber`)은 민감정보로 로그·타 사용자 노출 시 마스킹(본인 `GET /users/me`는 평문 노출 — 단 임대인 프로필 응답 형태는 추후 확인 필요).
 
 **값 객체(VO):**
 
@@ -198,7 +198,7 @@
 | enum | 값 | 의미 |
 | --- | --- | --- |
 | `UserType` | `TENANT` | 세입자(외국인 거주 탐색자) — 온보딩에서 `gender`·`birthDate`·`country`·`occupation`·`visaType` 수집 |
-| | `LANDLORD` | 임대인(매물 등록자) — 온보딩에서 `name`(단일)·`phoneNumber`만 수집(사업자등록번호는 추후 매물 등록 시점) |
+| | `LANDLORD` | 임대인(매물 등록자) — 온보딩에서 `name`(단일)·`phoneNumber`·`birthDate` 수집(사업자등록번호는 추후 매물 등록 시점) |
 | `UserStatus` | `PENDING` | 소셜 검증만 완료, 약관 미동의·온보딩 미완료 |
 | | `TERMS_AGREED` | 약관 동의 완료, 온보딩 정보 미입력 |
 | | `ACTIVE` | 온보딩 완료, 정상 이용 |
@@ -208,28 +208,22 @@
 | `Occupation` | `UNDERGRADUATE_STUDENT` | 학부생 |
 | | `GRADUATE_STUDENT` | 대학원생 |
 | | `EXCHANGE_STUDENT` | 교환학생 |
-| | `EDUCATION_ACADEMIC_RESEARCH` | 교육/학술 연구 |
-| | `IT_SOFTWARE_ENGINEERING` | IT/소프트웨어 엔지니어링 |
-| | `DEVELOPER` | 개발자 |
-| | `DESIGNER` | 디자이너 |
-| `VisaType`(값=상수명_코드) | `DIPLOMATIC_OFFICIAL_A-1_A-2` | 외교·공무 |
-| | `VISA_EXEMPTED_B` | 사증면제 |
-| | `JOURNALISM_RELIGIOUS_AFFAIRS_C-1_D-5_D-6` | 취재·종교 |
-| | `SHORT_TERM_VISIT_C-2_C-3` | 단기방문 |
-| | `STUDY_D-2` | 유학 |
-| | `TRAINEE_D-3_D-4` | 연수 |
-| | `INTRA_COMPANY_TRANSFER_D-7` | 주재 |
-| | `PROFESSIONAL_C-4_D-1_D-8_D-9_D-10_E-1_E-2_E-3_E-4_E-5_E-6_E-7` | 전문인력 |
-| | `NON_PROFESSIONAL_E-8_E-9_E-10` | 비전문취업 |
-| | `WORKING_HOLIDAY_H-1` | 워킹홀리데이 |
-| | `WORK_AND_VISIT_H-2` | 방문취업 |
-| | `FAMILY_VISITOR_DEPENDENT_F-1_F-2_F-3` | 방문동거·거주·동반 |
-| | `OVERSEAS_KOREAN_F-4` | 재외동포 |
-| | `PERMANENT_RESIDENCE_F-5` | 영주 |
-| | `MARRIAGE_MIGRANT_F-6` | 결혼이민 |
-| | `OTHERS_G-1` | 기타 |
+| | `LANGUAGE_TEACHING` | 어학·교육 |
+| | `MANUFACTURING_PRODUCTION` | 제조·생산 |
+| | `BUSINESS_TRADE` | 사업·무역 |
+| | `ETC` | 기타 |
+| `VisaType`(API=상수명·DB=라벨) | `SHORT_TERM_VISIT` | 단기방문 · 저장값 `Short Term Visit(C-1~4, B)` |
+| | `STUDENTS_TRAINEES` | 유학·연수 · 저장값 `Students & Trainees(D-2, D-3, D-4)` |
+| | `NON_PROFESSIONAL_WORKERS` | 비전문취업 · 저장값 `Non-Professional Workers(E-8, E-9, E-10, H-2)` |
+| | `WORKING_HOLIDAY_WORK_AND_VISIT` | 워킹홀리데이·방문취업 · 저장값 `Working Holiday/Work and Visit(H-1, H-2)` |
+| | `OVERSEAS_KOREANS` | 재외동포 · 저장값 `Overseas Koreans(F-4)` |
+| | `FAMILY_MARRIAGE_MIGRANTS` | 방문동거·거주·결혼이민 · 저장값 `Family/Marriage Migrants(F-1, F-2, F-3, F-6)` |
+| | `PERMANENT_RESIDENTS` | 영주 · 저장값 `Permanent Residents(F-5)` |
+| | `PROFESSIONALS` | 전문인력 · 저장값 `Professionals(C-4, D-1, D-7~10, E-1~7)` |
+| | `DIPLOMATIC_OFFICIAL_AND_OTHERS` | 외교·공무·기타 · 저장값 `Diplomatic/Official & Others(A-1, A-2, G-1)` |
+| | `ETC` | 기타 · 저장값 `etc` |
 
-> `Occupation`·`VisaType` 값은 확정 분류값이다(#93). **`VisaType`의 API·저장 값은 상수명 뒤에 출입국 체류자격 코드를 언더스코어로 이어붙인 형식**이다(예: `STUDY_D-2`, `DIPLOMATIC_OFFICIAL_A-1_A-2`) — 코드에 하이픈이 있어 다른 enum의 UPPER_SNAKE 규약과 달리 예외적으로 하이픈을 허용한다. `country`는 ISO 국가 코드를 보유하고, 표시명·국기(이미지 URL)는 `countries` reference로 확보한다(국가+국기 수집 — 클라이언트는 국가만 전송).
+> `Occupation`·`VisaType` 값은 확정 분류값이다(#93, #138 개편). **`VisaType`은 API(요청·응답)에서 다른 enum과 동일하게 상수명(예: `SHORT_TERM_VISIT`)으로 주고받되, DB에는 사람이 읽는 표시용 라벨(예: `Short Term Visit(C-1~4, B)`)을 저장한다** — 영속은 `VisaTypeConverter`가 `getValue()`/`fromValue()`로 처리한다(#138). `country`는 ISO 국가 코드를 보유하고, 표시명·국기(이미지 URL)는 `countries` reference로 확보한다(국가+국기 수집 — 클라이언트는 국가만 전송).
 
 **협력 / 이벤트:** 모든 타 모듈은 사용자를 `User` 식별자(`id`)로만 참조한다(엔티티 비공유). 소셜 자격→회원 매핑·이메일 인증·사업자번호 검증은 `auth`가 소유하며, `user`는 **회원 생성(`PENDING`)·약관 동의(`TERMS_AGREED` 전이)·온보딩 완료(`ACTIVE` 전이 + `userType` 확정)·탈퇴(`WITHDRAWN` 전이)** 를 공개 명령으로, 프로필을 공개 쿼리로 제공한다(`auth`가 소셜 로그인 분기·약관 동의·온보딩 완료에서 호출). 온보딩 완료 명령은 사용자가 `TERMS_AGREED`이고, **역할별 게이트 우선순위**를 통과한 뒤에만 수행된다 — 세입자는 **약관 동의 → 이메일 인증**(이메일이 `auth`에서 `VERIFIED`), 임대인은 **약관 동의 → 연락처 인증**(연락처가 `auth`에서 `VERIFIED`)된 뒤에만 완료된다(역할은 호출 엔드포인트로 분기, `userType`으로 확정 — 임대인 온보딩에는 사업자번호 게이트가 없다). 임대인 사업자등록번호는 온보딩과 분리된 무상태 검증(§1 `BusinessVerification`)으로 다루며 온보딩 완료 시 저장되지 않는다. 탈퇴 시 도메인 이벤트(예: `UserWithdrawnEvent`)를 발행해 `auth`가 refresh 토큰을 일괄 무효화하게 한다(ADR-0002). 닉네임·국적 등 표시정보가 필요한 타 모듈(예: `community`)에는 식별자 기반 공개 쿼리를 제공한다(탈퇴 회원은 닉네임 `(탈퇴한 사용자)`·국적 비움으로 마스킹).
 
@@ -541,7 +535,7 @@
 
 > [API 스펙](../api/specs/04-booking-inquiry-chat.md) · [시퀀스](sequence-diagrams/04-booking-inquiry-chat/README.md) · `allowedDependencies = {common, listing, user}`(조회 시점 매물 요약·가격 조회 `listing::api`, 예약자 성명 조회 `user::api`)
 
-세입자가 매물에 입주를 신청(예약)하는 컨텍스트다. **1차 MVP에서 매물 예약은 인앱 채팅과 분리된 독립 기능**으로, 예약을 저장(생성)하고 내 예약 목록·단건 상세를 조회한다. 조회는 **스냅샷 없이 조회 시점 실시간 조인**으로 매물 요약·가격은 `listing` 공개 쿼리(`listing::api`)로, 예약자 성명은 `user` 공개 쿼리(`user::api`)로 조합한다(cross-store 조인 금지, [ADR-0005](../adr/0005-polyglot-persistence.md) → 애플리케이션 레벨 조합). **후속·이연**: 신청 성공 시 도메인 이벤트(`BookingCreatedEvent`)를 발행해 임대인과의 채팅·예약 카드(`BOOKING_CARD`) 고정을 `chat`에 위임하는 설계는 1차 MVP 범위 밖으로 이연한다(설계 보존, 아래 협력/이벤트 참조).
+세입자가 매물에 입주를 신청(예약)하는 컨텍스트다. **1차 MVP에서 매물 예약은 인앱 채팅과 분리된 독립 기능**으로, 예약을 저장(생성)하고, 조회 엔드포인트는 요청자 `userType`으로 분기해 **세입자는 내 예약**을, **임대인은 자기 소유 매물(`listing.landlordId`=본인)에 신청된 예약**을 목록·단건 상세로 본다(별도 임대인 전용 API 없이 `userType` 분기; 역할 `403` 없음). 조회는 **스냅샷 없이 조회 시점 실시간 조인**으로 매물 요약·가격은 `listing` 공개 쿼리(`listing::api`)로, 예약자 성명은 `user` 공개 쿼리(`user::api`)로 조합한다(cross-store 조인 금지, [ADR-0005](../adr/0005-polyglot-persistence.md) → 애플리케이션 레벨 조합). **후속·이연**: 신청 성공 시 도메인 이벤트(`BookingCreatedEvent`)를 발행해 임대인과의 채팅·예약 카드(`BOOKING_CARD`) 고정을 `chat`에 위임하는 설계는 1차 MVP 범위 밖으로 이연한다(설계 보존, 아래 협력/이벤트 참조).
 
 **`Booking`** — 세입자가 특정 매물(방 상품)에 제출한 신청(예약) 애그리거트 루트. 식별자 `id`(API에서 `bookingId`로 노출), 활성 예약 비즈니스 키 `(tenantId, roomOfferId)`.
 
@@ -553,6 +547,7 @@
 | `tenantId` | 식별자 | 신청한 세입자 → `User` 식별자 참조(소유권·조회 스코프) |
 | `listingId` | 식별자 | 신청 대상 매물 → `Listing` 식별자 참조(문자열 ObjectId hex) |
 | `roomOfferId` | 식별자 | 신청 대상 방 상품 → `Listing` 내부 `RoomOffer` 식별자 참조(문자열 ObjectId hex) |
+| `landlordId` | 식별자 | 신청 대상 매물의 소유자 → `User` 식별자 참조. **생성 시 `listing::api`로 조회한 `listing.landlordId` 스냅샷**(숫자) — 임대인 받은 신청 조회(US-4-6)의 소유권 스코프 키 |
 | `moveInDate` | LocalDate | 타겟 입주일(날짜만) |
 | `contractPeriod` | int | 신청 시 입력한 계약 기간(개월수, 양의 정수) |
 | `status` | enum `BookingStatus` | 예약 상태(신청 직후 `REQUESTED` 고정) |
@@ -560,9 +555,9 @@
 
 > **저장하지 않는 값(조회 시점 계산·조인):** 예약자 성명(`tenantName`)·매물 요약(`title`·`thumbnailUrl`·주소·`RoomOffer` name)·가격(`deposit`·`monthlyRent`)·총 금액(`totalAmount`)은 **애그리거트에 스냅샷으로 저장하지 않는다** — 상세/목록 조회 시점에 `listing`(`listingId`·`roomOfferId`로)·`user`(`tenantId`로) 공개 쿼리로 실시간 조인해 조립한다(가격 변경 시 현재가 기준). 총 금액 `totalAmount = deposit + monthlyRent × contractPeriod`(계약 개월수 정수)이며 **관리비(`maintenanceFee`)는 총액에서 제외**한다 — 저장 필드가 아니라 조회 계산값이다.
 >
-> **후속·이연(1차 MVP 제외):** 매물 소유자 식별자(`landlordId`)와 첫 인사 메시지(`GreetingMessage`)는 채팅 연동(예약 카드·첫 인사 전송) 설계에 속하므로 애그리거트 저장 필드에 두지 않는다. **예약은 세입자 전용**이라 세입자가 자기 소유 매물을 예약할 수 없어, 본인 매물 차단(임대인 식별자 조회·대조)은 두지 않는다.
+> **소유자 식별자(`landlordId`) — 생성 시 비정규화 저장:** 예약 **생성 시** 매물 소유자(`listing.landlordId`)를 `Booking.landlordId`로 함께 저장한다(생성이 이미 `listing::api`로 매물을 조회하므로 소유자 스냅샷 캡처 비용이 거의 없다). 임대인 **조회 분기**(`userType=LANDLORD`)의 "내 매물에 신청됨"은 이 `landlordId`로 booking 저장소에서 직접 스코핑하며(목록 `landlord_id=요청자`, 상세 `booking.landlordId==요청자` 행 단위 확인), **cross-store 조인이 불필요**하다([ADR-0005](../adr/0005-polyglot-persistence.md)) — `chat_rooms`가 `landlord_id`를 비정규화하는 선례와 일치한다. 생성 시점 스냅샷이라 소유권 이전 시 stale하나 이전은 MVP 범위 밖이다. 예약 **생성** 자체는 세입자 전용이라 본인 매물 차단(소유자 대조)은 여전히 불필요하다. 첫 인사 메시지(`GreetingMessage`)는 채팅 연동 설계에 속하므로 **후속·이연**으로 애그리거트 저장 필드에 두지 않는다.
 
-**불변식:** 예약은 `ACTIVE` 세입자(`userType=TENANT`) 전용 — 임대인/비세입자는 거부(`403 FORBIDDEN`); **MVP의 예약은 "신청" 성격이라 중복 제한이 없다** — 활성 유니크 제약을 두지 않고 같은 방 상품에도 여러 신청을 허용한다(`BOOKING_ALREADY_EXISTS` 없음); 예약은 세입자 전용이라 자기 소유 매물 예약 상황이 성립하지 않아 본인 매물 차단(소유자 조회)도 없다; `moveInDate`는 과거 불가·매물 입주 가능일 이전 불가(`422 BOOKING_INVALID_MOVE_IN_DATE`); `contractPeriod`는 양의 정수 개월수(`400 INVALID_INPUT`); 대상 매물·방 상품이 없거나 비공개면 부재 처리(`404 LISTING_NOT_FOUND`); **신청 생성 시 `status`는 항상 `REQUESTED` 고정 — 수락/거절/취소 등 상태전이는 이 범위 밖**(1차 MVP 미구현); 목록·상세 조회는 요청자 본인(`tenantId`) 예약만 반환하며 없거나 타인 예약이면 `404 BOOKING_NOT_FOUND`.
+**불변식:** 예약은 `ACTIVE` 세입자(`userType=TENANT`) 전용 — 임대인/비세입자는 거부(`403 FORBIDDEN`); **MVP의 예약은 "신청" 성격이라 중복 제한이 없다** — 활성 유니크 제약을 두지 않고 같은 방 상품에도 여러 신청을 허용한다(`BOOKING_ALREADY_EXISTS` 없음); 예약은 세입자 전용이라 자기 소유 매물 예약 상황이 성립하지 않아 본인 매물 차단(소유자 조회)도 없다; `moveInDate`는 과거 불가·매물 입주 가능일 이전 불가(`422 BOOKING_INVALID_MOVE_IN_DATE`); `contractPeriod`는 양의 정수 개월수(`400 INVALID_INPUT`); 대상 매물·방 상품이 없거나 비공개면 부재 처리(`404 LISTING_NOT_FOUND`); **신청 생성 시 `status`는 항상 `REQUESTED` 고정 — 수락/거절/취소 등 상태전이는 이 범위 밖**(1차 MVP 미구현); 목록·상세 조회는 `userType`으로 분기한다 — **세입자 분기**는 요청자 본인(`tenantId`) 예약만 반환하며 없거나 타인 예약이면 `404 BOOKING_NOT_FOUND`, **임대인 분기**(`userType=LANDLORD`)는 요청자 소유 매물(`listing.landlordId`=본인)에 신청된 예약만 반환하며 없거나 내 소유 매물 신청이 아니면 `404 BOOKING_NOT_FOUND`로 통일한다(두 역할 모두 유효 요청이라 역할 `403` 없음).
 
 **값 객체(VO):** 1차 MVP의 예약 애그리거트에는 값 객체가 없다.
 
@@ -579,7 +574,7 @@
 
 > `contractPeriod`는 enum이 아니라 **정수(개월수, 양의 정수)** 다 — `1`·`3`·`6`·`12`·`24` 등 자유 입력.
 
-**협력 / 이벤트:** 세입자는 `user`, 매물·방 상품은 `listing`을 식별자로만 참조한다(ADR-0002, 엔티티 비공유). **생성 시점**에는 매물 존재·공개 검증과 입주 가능일 조회를 `listing` 공개 쿼리(`listing::api`)로 받는다(부재/비공개 `404 LISTING_NOT_FOUND`; 예약은 세입자 전용이라 소유자 조회는 불요). **조회 시점**(목록·상세)에는 **스냅샷 없이 실시간 조인**한다 — 매물 요약·가격(`title`·`thumbnailUrl`·주소·`RoomOffer` name·`deposit`·`monthlyRent`)은 `listing::api`로 `(listingId, roomOfferId)`를 조회하고, 예약자 성명(`tenantName`)은 `user::api`(`getUserName(tenantId)`)로 조회해 애플리케이션 레벨에서 조합한다(cross-store 조인 금지, [ADR-0005](../adr/0005-polyglot-persistence.md); 가격 변경 시 상세는 현재가 기준). 총 금액은 조회 시점 계산값(`deposit + monthlyRent × contractPeriod`, 관리비 제외)이다. 두 조회 메서드(`listing::api`의 가격·매물요약 조회, `user::api`의 성명 조회)는 신규 공개 조회로 노출되며 이에 따라 `booking`의 `allowedDependencies`는 `{common, listing, user}`다.
+**협력 / 이벤트:** 세입자는 `user`, 매물·방 상품은 `listing`을 식별자로만 참조한다(ADR-0002, 엔티티 비공유). **생성 시점**에는 매물 존재·공개 검증과 입주 가능일 조회를 `listing` 공개 쿼리(`listing::api`)로 받는다(부재/비공개 `404 LISTING_NOT_FOUND`; 예약은 세입자 전용이라 소유자 조회는 불요). **조회 시점**(목록·상세)에는 **스냅샷 없이 실시간 조인**한다 — 매물 요약·가격(`title`·`thumbnailUrl`·주소·`RoomOffer` name·`deposit`·`monthlyRent`)은 `listing::api`로 `(listingId, roomOfferId)`를 조회하고, 예약자 성명(`tenantName`)은 `user::api`(`getUserName(tenantId)`)로 조회해 애플리케이션 레벨에서 조합한다(cross-store 조인 금지, [ADR-0005](../adr/0005-polyglot-persistence.md); 가격 변경 시 상세는 현재가 기준). 총 금액은 조회 시점 계산값(`deposit + monthlyRent × contractPeriod`, 관리비 제외)이다. 두 조회 메서드(`listing::api`의 가격·매물요약 조회, `user::api`의 성명 조회)는 신규 공개 조회로 노출되며 이에 따라 `booking`의 `allowedDependencies`는 `{common, listing, user}`다. **임대인 조회 분기**(`userType=LANDLORD`)는 소유권을 `Booking.landlordId`로 판정하므로 `listing::api` 소유권 조회 메서드가 **불필요**하다 — 대신 예약 **생성** 시 소유자 캡처를 위해 `listing::api`의 매물 조회 뷰(`RoomOfferBookingView`)에 `landlordId`를 추가 노출하고, 임대인 **상세** 분기의 신청자 프로필 조회를 위해 `user::api`에 `getApplicantProfile`(성명·성별·국적·이메일)를 신규 공개 조회로 추가한다. 임대인에게 신청자 PII(이메일·성별·국적)는 **마스킹 없이 평문으로 노출**한다(제품 결정).
 
 **후속·이연(1차 MVP 제외):** 신청 성공 시 **`BookingCreatedEvent`** 를 발행해(페이로드: `bookingId`·`listingId`·`tenantId`·`landlordId`·`moveInDate`·`contractPeriod`·첫 인사 메시지) `chat`이 구독하고 임대인 채팅방 보장·예약 카드(`BOOKING_CARD`) 고정·첫 인사 전송을 처리하는 채팅 연동 설계는 **1차 MVP 범위 밖으로 이연**한다(설계 보존, 삭제 아님). `booking`은 `chat`을 알지 못한다(단방향).
 

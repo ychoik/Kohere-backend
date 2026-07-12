@@ -1,6 +1,7 @@
 package com.kohere.user.application;
 
 import com.kohere.common.exception.InvalidInputException;
+import com.kohere.user.api.ApplicantProfileView;
 import com.kohere.user.api.LandlordOnboardingProfile;
 import com.kohere.user.api.OnboardingProfile;
 import com.kohere.user.api.TermsAgreementView;
@@ -75,7 +76,7 @@ public class UserAccountServiceImpl implements UserAccountService {
     User user = userRepository.findById(userId).orElseThrow(UserNotFoundException::new);
     Gender gender = parseEnum(Gender.class, profile.gender());
     Occupation occupation = parseEnum(Occupation.class, profile.occupation());
-    VisaType visaType = parseVisaType(profile.visaType());
+    VisaType visaType = parseEnum(VisaType.class, profile.visaType());
     if (profile.country() == null || !countryRepository.existsByCode(profile.country())) {
       throw new InvalidInputException("country 값이 올바르지 않습니다: " + profile.country());
     }
@@ -103,7 +104,7 @@ public class UserAccountServiceImpl implements UserAccountService {
     String nickname = nicknameGenerator.generateUnique();
     User active =
         user.completeLandlordOnboarding(
-            profile.name(), profile.phoneNumber(), nickname, Instant.now());
+            profile.name(), profile.phoneNumber(), profile.birthDate(), nickname, Instant.now());
     return toProfileView(userRepository.save(active));
   }
 
@@ -131,6 +132,25 @@ public class UserAccountServiceImpl implements UserAccountService {
     String first = user.getFirstName() == null ? "" : user.getFirstName();
     String last = user.getLastName() == null ? "" : user.getLastName();
     return (first + " " + last).trim();
+  }
+
+  @Override
+  @Transactional(readOnly = true)
+  public ApplicantProfileView getApplicantProfile(long userId) {
+    User user = userRepository.findById(userId).orElseThrow(UserNotFoundException::new);
+    Country country =
+        user.getCountry() == null
+            ? null
+            : countryRepository.findByCode(user.getCountry()).orElse(null);
+    String first = user.getFirstName() == null ? "" : user.getFirstName();
+    String last = user.getLastName() == null ? "" : user.getLastName();
+    return new ApplicantProfileView(
+        user.getId(),
+        (first + " " + last).trim(),
+        user.getGender() == null ? null : user.getGender().name(),
+        user.getCountry(),
+        country == null ? null : country.name(),
+        user.getEmail());
   }
 
   @Override
@@ -172,7 +192,7 @@ public class UserAccountServiceImpl implements UserAccountService {
         country == null ? null : country.flag(),
         u.getOccupation() == null ? null : u.getOccupation().name(),
         u.getEmail(),
-        u.getVisaType() == null ? null : u.getVisaType().getValue(),
+        u.getVisaType() == null ? null : u.getVisaType().name(),
         landlord ? maskPhone(u.getPhoneNumber()) : null,
         u.getUserType() == null ? null : u.getUserType().name(),
         u.getStatus().name(),
@@ -199,15 +219,6 @@ public class UserAccountServiceImpl implements UserAccountService {
       return Enum.valueOf(type, value);
     } catch (IllegalArgumentException | NullPointerException e) {
       throw new InvalidInputException(type.getSimpleName() + " 값이 올바르지 않습니다: " + value);
-    }
-  }
-
-  // VisaType은 상수명이 아니라 value(STUDY_D-2 …)로 주고받으므로 name 기반 parseEnum과 분리한다(#93).
-  private static VisaType parseVisaType(String value) {
-    try {
-      return VisaType.fromValue(value);
-    } catch (IllegalArgumentException | NullPointerException e) {
-      throw new InvalidInputException("VisaType 값이 올바르지 않습니다: " + value);
     }
   }
 }
